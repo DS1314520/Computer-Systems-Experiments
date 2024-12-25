@@ -1,4 +1,4 @@
-`include "lib/defines.vh" 
+`include "lib/defines.vh"
 module mycpu_top(
     input wire clk,
     input wire resetn,
@@ -23,11 +23,10 @@ module mycpu_top(
 );
 
     wire [31:0] inst_sram_addr_v, data_sram_addr_v;
-    wire stallreq; // 添加 stallreq 信号
 
     mycpu_core u_mycpu_core(
-        .clk               (clk               ),
-        .rst               (~resetn           ), // resetn 为低有效
+    	.clk               (clk               ),
+        .rst               (~resetn           ),
         .int               (ext_int           ),
         .inst_sram_en      (inst_sram_en      ),
         .inst_sram_wen     (inst_sram_wen     ),
@@ -42,24 +41,20 @@ module mycpu_top(
         .debug_wb_pc       (debug_wb_pc       ),
         .debug_wb_rf_wen   (debug_wb_rf_wen   ),
         .debug_wb_rf_wnum  (debug_wb_rf_wnum  ),
-        .debug_wb_rf_wdata (debug_wb_rf_wdata ),
-        .stallreq          (stallreq) // 传递 stallreq 信号
+        .debug_wb_rf_wdata (debug_wb_rf_wdata )
     );
 
     mmu u0_mmu(
-        .addr_i (inst_sram_addr_v ),
+    	.addr_i (inst_sram_addr_v ),
         .addr_o (inst_sram_addr   )
     );
 
     mmu u1_mmu(
-        .addr_i (data_sram_addr_v ),
+    	.addr_i (data_sram_addr_v ),
         .addr_o (data_sram_addr   )
     );
-
-    // 处理 stallreq
-    CTRL u_CTRL(
-        .rst   (~resetn),   // 复位信号
-        .stall (stallreq)   // 将 stallreq 传递到控制模块
-    );
     
-endmodule
+    
+    
+    
+endmodule 

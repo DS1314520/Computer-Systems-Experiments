@@ -1,10 +1,8 @@
-//修改后：
-
 `include "lib/defines.vh"
-
 module ID(
     input wire clk,
     input wire rst,
+    // input wire flush,
     input wire [`StallBus-1:0] stall,
     
     output wire stallreq,
@@ -17,7 +15,19 @@ module ID(
 
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
-    output wire [`BR_WD-1:0] br_bus 
+    output wire [`BR_WD-1:0] br_bus,
+
+    //来自执行阶段的信息，指示当前是否有 load 指令
+    input wire ex_is_load,
+    //从执行、存储器、写回阶段传来的转发数据
+    input wire [37:0] ex_to_id,
+    input wire [37:0] mem_to_id,
+    input wire [37:0] wb_to_id,
+    //特定于 HI/LO 寄存器的转发数据，宽度为 66 位，可能是双寄存器的值和状态。
+    input wire [65:0] hilo_ex_to_id,
+    //译码阶段的停止请求信号
+    output wire stallreq_from_id
+
 );
 
     reg [`IF_TO_ID_WD-1:0] if_to_id_bus_r;
@@ -25,14 +35,34 @@ module ID(
     wire [31:0] id_pc;
     wire ce;
 
+    //写回阶段写寄存器使能信号,指示是否向寄存器文件写数据
     wire wb_rf_we;
     wire [4:0] wb_rf_waddr;
     wire [31:0] wb_rf_wdata;
+
+
+    //写回阶段传递到译码阶段的写使能信号，指示写回阶段是否有数据需要写入寄存器文件。
+    wire wb_id_we;
+    wire [4:0] wb_id_waddr;
+    wire [31:0] wb_id_wdata;
+
+    //存储阶段到译码阶段的写使能信号，指示存储阶段是否有数据需要写入寄存器文件。
+    wire mem_id_we;
+    wire [4:0] mem_id_waddr;
+    wire [31:0] mem_id_wdata;
+
+    //执行阶段到译码阶段的写使能信号，指示执行阶段是否有数据需要写入寄存器文件。
+    wire ex_id_we;
+    wire [4:0] ex_id_waddr;
+    wire [31:0] ex_id_wdata;
 
     always @ (posedge clk) begin
         if (rst) begin
             if_to_id_bus_r <= `IF_TO_ID_WD'b0;        
         end
+        // else if (flush) begin
+        //     ic_to_id_bus <= `IC_TO_ID_WD'b0;
+        // end
         else if (stall[1]==`Stop && stall[2]==`NoStop) begin
             if_to_id_bus_r <= `IF_TO_ID_WD'b0;
         end
@@ -41,7 +71,21 @@ module ID(
         end
     end
     
-    assign inst = inst_sram_rdata;
+    reg q;
+    //控制 q 寄存器的值，1暂停 0恢复正常
+    always @(posedge clk) begin
+        if (stall[1]==`Stop) begin
+            q <= 1'b1;
+        end
+        else begin
+            q <= 1'b0;
+        end
+    end
+    //如果q=1，inst不变，否则更新inst
+    assign inst = (q) ?inst: inst_sram_rdata;
+
+    //原 assign inst = inst_sram_rdata;
+
     assign {
         ce,
         id_pc
@@ -52,8 +96,27 @@ module ID(
         wb_rf_wdata
     } = wb_to_rf_bus;
 
+
+    assign {
+        wb_id_we,
+        wb_id_waddr,
+        wb_id_wdata
+    } = wb_to_id;
+
+    assign {
+        mem_id_we,
+        mem_id_waddr,
+        mem_id_wdata
+    } = mem_to_id;
+
+    assign {
+        ex_id_we,
+        ex_id_waddr,
+        ex_id_wdata
+    } = ex_to_id;
+
     wire [5:0] opcode;
-    wire [4:0] rs, rt, rd, sa;
+    wire [4:0] rs,rt,rd,sa;
     wire [5:0] func;
     wire [15:0] imm;
     wire [25:0] instr_index;
@@ -71,25 +134,25 @@ module ID(
 
     wire data_ram_en;
     wire [3:0] data_ram_wen;
-    
+    wire [3:0] data_ram_readen;//可读？？？
+
     wire rf_we;
     wire [4:0] rf_waddr;
     wire sel_rf_res;
     wire [2:0] sel_rf_dst;
 
     wire [31:0] rdata1, rdata2;
+    
 
     regfile u_regfile(
-        .clk    (clk    ),
-        .raddr1 (rs     ),
+    	.clk    (clk    ),
+        .raddr1 (rs ),
         .rdata1 (rdata1 ),
-        .raddr2 (rt     ),
+        .raddr2 (rt ),
         .rdata2 (rdata2 ),
-        .we     (wb_rf_we),
-        .waddr  (wb_rf_waddr),
-        .wdata  (wb_rf_wdata),
-        .flush  (rst), // 传递冲刷信号
-        .stall  (stall[0])  // 传递停顿信号
+        .we     (wb_rf_we     ),
+        .waddr  (wb_rf_waddr  ),
+        .wdata  (wb_rf_wdata  )
     );
 
     assign opcode = inst[31:26];
@@ -112,37 +175,43 @@ module ID(
     wire op_sll, op_srl, op_sra, op_lui;
 
     decoder_6_64 u0_decoder_6_64(
-        .in  (opcode  ),
+    	.in  (opcode  ),
         .out (op_d )
     );
 
     decoder_6_64 u1_decoder_6_64(
-        .in  (func  ),
+    	.in  (func  ),
         .out (func_d )
     );
     
     decoder_5_32 u0_decoder_5_32(
-        .in  (rs  ),
+    	.in  (rs  ),
         .out (rs_d )
     );
 
     decoder_5_32 u1_decoder_5_32(
-        .in  (rt  ),
+    	.in  (rt  ),
         .out (rt_d )
     );
 
+    
     assign inst_ori     = op_d[6'b00_1101];
     assign inst_lui     = op_d[6'b00_1111];
     assign inst_addiu   = op_d[6'b00_1001];
     assign inst_beq     = op_d[6'b00_0100];
 
+
+
     // rs to reg1
     assign sel_alu_src1[0] = inst_ori | inst_addiu;
+
     // pc to reg1
     assign sel_alu_src1[1] = 1'b0;
+
     // sa_zero_extend to reg1
     assign sel_alu_src1[2] = 1'b0;
 
+    
     // rt to reg2
     assign sel_alu_src2[0] = 1'b0;
     
@@ -154,6 +223,8 @@ module ID(
 
     // imm_zero_extend to reg2
     assign sel_alu_src2[3] = inst_ori;
+
+
 
     assign op_add = inst_addiu;
     assign op_sub = 1'b0;
@@ -172,19 +243,32 @@ module ID(
                      op_and, op_nor, op_or, op_xor,
                      op_sll, op_srl, op_sra, op_lui};
 
+
+
+    // load and store enable
     assign data_ram_en = 1'b0;
+
+    // write enable
     assign data_ram_wen = 1'b0;
 
+    // regfile store enable
     assign rf_we = inst_ori | inst_lui | inst_addiu;
 
+
+
+    // store in [rd]
     assign sel_rf_dst[0] = 1'b0;
+    // store in [rt] 
     assign sel_rf_dst[1] = inst_ori | inst_lui | inst_addiu;
+    // store in [31]
     assign sel_rf_dst[2] = 1'b0;
 
+    // sel for regfile address
     assign rf_waddr = {5{sel_rf_dst[0]}} & rd 
                     | {5{sel_rf_dst[1]}} & rt
                     | {5{sel_rf_dst[2]}} & 32'd31;
 
+    // 0 from alu_res ; 1 from ld_res
     assign sel_rf_res = 1'b0; 
 
     assign id_to_ex_bus = {
@@ -201,6 +285,7 @@ module ID(
         rdata1,         // 63:32
         rdata2          // 31:0
     };
+
 
     wire br_e;
     wire [31:0] br_addr;
@@ -221,5 +306,7 @@ module ID(
         br_e,
         br_addr
     };
+    
+
 
 endmodule

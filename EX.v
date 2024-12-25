@@ -1,8 +1,8 @@
-`include "lib/defines.vh" 
-
+`include "lib/defines.vh"
 module EX(
     input wire clk,
     input wire rst,
+    // input wire flush,
     input wire [`StallBus-1:0] stall,
 
     input wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
@@ -12,7 +12,12 @@ module EX(
     output wire data_sram_en,
     output wire [3:0] data_sram_wen,
     output wire [31:0] data_sram_addr,
-    output wire [31:0] data_sram_wdata
+    output wire [31:0] data_sram_wdata,
+
+    //数据
+    output wire [37:0] ex_to_id,
+    output wire stallreq_from_ex,
+    output wire ex_is_load
 );
 
     reg [`ID_TO_EX_WD-1:0] id_to_ex_bus_r;
@@ -21,6 +26,9 @@ module EX(
         if (rst) begin
             id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
         end
+        // else if (flush) begin
+        //     id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
+        // end
         else if (stall[2]==`Stop && stall[3]==`NoStop) begin
             id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
         end
@@ -41,7 +49,17 @@ module EX(
     wire [31:0] rf_rdata1, rf_rdata2;
     reg is_in_delayslot;
 
+    //加
+    wire [3:0] data_ram_readen;
+
     assign {
+        data_ram_readen,//168:165
+        inst_mthi,      //164
+        inst_mtlo,      //163
+        inst_multu,     //162
+        inst_mult,      //161
+        inst_divu,      //160
+        inst_div,       //159
         ex_pc,          // 148:117
         inst,           // 116:85
         alu_op,         // 84:83
@@ -52,9 +70,11 @@ module EX(
         rf_we,          // 70
         rf_waddr,       // 69:65
         sel_rf_res,     // 64
-        rf_rdata1,      // 63:32
-        rf_rdata2       // 31:0
+        rf_rdata1,         // 63:32
+        rf_rdata2          // 31:0
     } = id_to_ex_bus_r;
+
+    assign ex_is_load = (inst[31:26] == 6'b10_0011) ? 1'b1 : 1'b0;
 
     wire [31:0] imm_sign_extend, imm_zero_extend, sa_zero_extend;
     assign imm_sign_extend = {{16{inst[15]}},inst[15:0]};
@@ -72,10 +92,10 @@ module EX(
                       sel_alu_src2[3] ? imm_zero_extend : rf_rdata2;
     
     alu u_alu(
-        .alu_control (alu_op ),
-        .alu_src1    (alu_src1),
-        .alu_src2    (alu_src2),
-        .alu_result  (alu_result)
+    	.alu_control (alu_op ),
+        .alu_src1    (alu_src1    ),
+        .alu_src2    (alu_src2    ),
+        .alu_result  (alu_result  )
     );
 
     assign ex_result = alu_result;
@@ -90,17 +110,43 @@ module EX(
         ex_result       // 31:0
     };
 
+    //加
+    assign  ex_to_id ={   
+        rf_we,          // 37
+        rf_waddr,       // 36:32
+        ex_result       // 31:0
+    };
+
+    assign data_sram_en = data_ram_en;
+    assign data_sram_wen =   (data_ram_readen==4'b0101 && ex_result[1:0] == 2'b00 )? 4'b0001 
+                            :(data_ram_readen==4'b0101 && ex_result[1:0] == 2'b01 )? 4'b0010
+                            :(data_ram_readen==4'b0101 && ex_result[1:0] == 2'b10 )? 4'b0100
+                            :(data_ram_readen==4'b0101 && ex_result[1:0] == 2'b11 )? 4'b1000
+                            :(data_ram_readen==4'b0111 && ex_result[1:0] == 2'b00 )? 4'b0011
+                            :(data_ram_readen==4'b0111 && ex_result[1:0]== 2'b10 )? 4'b1100
+                            : data_ram_wen;//写使能信号        
+    assign data_sram_addr = ex_result;  //内存的地址
+    assign data_sram_wdata = data_sram_wen==4'b1111 ? rf_rdata2 
+                            :data_sram_wen==4'b0001 ? {24'b0,rf_rdata2[7:0]}
+                            :data_sram_wen==4'b0010 ? {16'b0,rf_rdata2[7:0],8'b0}
+                            :data_sram_wen==4'b0100 ? {8'b0,rf_rdata2[7:0],16'b0}
+                            :data_sram_wen==4'b1000 ? {rf_rdata2[7:0],24'b0}
+                            :data_sram_wen==4'b0011 ? {16'b0,rf_rdata2[15:0]}
+                            :data_sram_wen==4'b1100 ? {rf_rdata2[15:0],16'b0}
+                            :32'b0;
+    
+
     // MUL part
     wire [63:0] mul_result;
     wire mul_signed; // 有符号乘法标记
 
     mul u_mul(
-        .clk        (clk),
-        .resetn     (~rst),
-        .mul_signed (mul_signed),
-        .ina        (alu_src1), // 乘法源操作数1
-        .inb        (alu_src2), // 乘法源操作数2
-        .result     (mul_result)
+    	.clk        (clk            ),
+        .resetn     (~rst           ),
+        .mul_signed (mul_signed     ),
+        .ina        (      ), // 乘法源操作数1
+        .inb        (      ), // 乘法源操作数2
+        .result     (mul_result     ) // 乘法结果 64bit
     );
 
     // DIV part
@@ -116,15 +162,15 @@ module EX(
     reg signed_div_o;
 
     div u_div(
-        .rst          (rst),
-        .clk          (clk),
-        .signed_div_i (signed_div_o),
-        .opdata1_i    (div_opdata1_o),
-        .opdata2_i    (div_opdata2_o),
-        .start_i      (div_start_o),
-        .annul_i      (1'b0),
-        .result_o     (div_result),
-        .ready_o      (div_ready_i)
+    	.rst          (rst          ),
+        .clk          (clk          ),
+        .signed_div_i (signed_div_o ),
+        .opdata1_i    (div_opdata1_o    ),
+        .opdata2_i    (div_opdata2_o    ),
+        .start_i      (div_start_o      ),
+        .annul_i      (1'b0      ),
+        .result_o     (div_result     ), // 除法结果 64bit
+        .ready_o      (div_ready_i      )
     );
 
     always @ (*) begin
@@ -195,5 +241,6 @@ module EX(
     end
 
     // mul_result 和 div_result 可以直接使用
-
+    
+    
 endmodule
