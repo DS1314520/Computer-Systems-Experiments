@@ -15,7 +15,10 @@ module ID(
 
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
-    output wire [`BR_WD-1:0] br_bus 
+    output wire [`BR_WD-1:0] br_bus，
+
+    //添加ex_to_id数据通路
+    input wire[37:0] ex_to_id_bus 
 );
 
     reg [`IF_TO_ID_WD-1:0] if_to_id_bus_r;
@@ -88,7 +91,8 @@ module ID(
         .rdata2 (rdata2 ),
         .we     (wb_rf_we     ),
         .waddr  (wb_rf_waddr  ),
-        .wdata  (wb_rf_wdata  )
+        .wdata  (wb_rf_wdata  ),
+        .ex_to_id_bus (ex_to_id_bus)
     );
 
     assign opcode = inst[31:26];

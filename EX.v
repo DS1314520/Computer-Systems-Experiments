@@ -12,7 +12,10 @@ module EX(
     output wire data_sram_en,
     output wire [3:0] data_sram_wen,
     output wire [31:0] data_sram_addr,
-    output wire [31:0] data_sram_wdata
+    output wire [31:0] data_sram_wdata,
+
+    //数据
+    output wire [37:0] ex_to_id_bus
 );
 
     reg [`ID_TO_EX_WD-1:0] id_to_ex_bus_r;
@@ -92,6 +95,15 @@ module EX(
         rf_waddr,       // 36:32
         ex_result       // 31:0
     };
+
+
+    //数据通路总线
+    assign ex_to_id_bus={
+         rf_we,          // 37，此信号为高电平时，寄存器文件被允许写入�?
+        rf_waddr,       // 36:32，此地址指定要写入寄存器文件的结果的位置
+        ex_result  
+    };
+
 
     // MUL part
     wire [63:0] mul_result;

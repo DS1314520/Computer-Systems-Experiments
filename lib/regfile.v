@@ -8,7 +8,10 @@ module regfile(
     
     input wire we,
     input wire [4:0] waddr,
-    input wire [31:0] wdata
+    input wire [31:0] wdata,
+
+    //添加ex_to_id数据通路
+    input wire[37:0] ex_to_id_bus
 );
     reg [31:0] reg_array [31:0];
     // write
@@ -18,8 +21,21 @@ module regfile(
         end
     end
 
+
+
+    wire ex_rf_we;
+    wire [4:0]ex_rf_waddr;
+    wire [31:0]ex_result;
+    assign{
+        ex_rf_we,
+        ex_rf_waddr,
+        ex_result
+    }=ex_to_id_bus;
+
     // read out 1
-    assign rdata1 = (raddr1 == 5'b0) ? 32'b0 : reg_array[raddr1];
+    assign rdata1 = (raddr1 == 5'b0) ? 32'b0 : 
+                    (raddr1==ex_rf_waddr&&ex_rf_we)? ex_result:
+                reg_array[raddr1];
 
     // read out2
     assign rdata2 = (raddr2 == 5'b0) ? 32'b0 : reg_array[raddr2];
