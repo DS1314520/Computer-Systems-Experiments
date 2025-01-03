@@ -15,6 +15,6 @@ module CTRL(
         else begin
             stall = `StallBus'b0;
         end
-    end
+    end//
 
 endmodule
