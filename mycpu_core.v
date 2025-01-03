@@ -90,7 +90,7 @@ module mycpu_core(
         .stall           (stall           ),
         .ex_to_mem_bus   (ex_to_mem_bus   ),
         .data_sram_rdata (data_sram_rdata ),
-        .mem_to_id       (mem_to_id       ),
+        .mem_to_id_bus      (mem_to_id_bus   ),
         .mem_to_wb_bus   (mem_to_wb_bus   )
     );
     
