@@ -12,12 +12,7 @@ module EX(
     output wire data_sram_en,
     output wire [3:0] data_sram_wen,
     output wire [31:0] data_sram_addr,
-    output wire [31:0] data_sram_wdata,
-
-    //数据
-    output wire [37:0] ex_to_id,
-    output wire stallreq_from_ex,
-    output wire ex_is_load
+    output wire [31:0] data_sram_wdata
 );
 
     reg [`ID_TO_EX_WD-1:0] id_to_ex_bus_r;
@@ -49,17 +44,7 @@ module EX(
     wire [31:0] rf_rdata1, rf_rdata2;
     reg is_in_delayslot;
 
-    //加
-    wire [3:0] data_ram_readen;
-
     assign {
-        data_ram_readen,//168:165
-        inst_mthi,      //164
-        inst_mtlo,      //163
-        inst_multu,     //162
-        inst_mult,      //161
-        inst_divu,      //160
-        inst_div,       //159
         ex_pc,          // 148:117
         inst,           // 116:85
         alu_op,         // 84:83
@@ -73,8 +58,6 @@ module EX(
         rf_rdata1,         // 63:32
         rf_rdata2          // 31:0
     } = id_to_ex_bus_r;
-
-    assign ex_is_load = (inst[31:26] == 6'b10_0011) ? 1'b1 : 1'b0;
 
     wire [31:0] imm_sign_extend, imm_zero_extend, sa_zero_extend;
     assign imm_sign_extend = {{16{inst[15]}},inst[15:0]};
@@ -109,32 +92,6 @@ module EX(
         rf_waddr,       // 36:32
         ex_result       // 31:0
     };
-
-    //加
-    assign  ex_to_id ={   
-        rf_we,          // 37
-        rf_waddr,       // 36:32
-        ex_result       // 31:0
-    };
-
-    assign data_sram_en = data_ram_en;
-    assign data_sram_wen =   (data_ram_readen==4'b0101 && ex_result[1:0] == 2'b00 )? 4'b0001 
-                            :(data_ram_readen==4'b0101 && ex_result[1:0] == 2'b01 )? 4'b0010
-                            :(data_ram_readen==4'b0101 && ex_result[1:0] == 2'b10 )? 4'b0100
-                            :(data_ram_readen==4'b0101 && ex_result[1:0] == 2'b11 )? 4'b1000
-                            :(data_ram_readen==4'b0111 && ex_result[1:0] == 2'b00 )? 4'b0011
-                            :(data_ram_readen==4'b0111 && ex_result[1:0]== 2'b10 )? 4'b1100
-                            : data_ram_wen;//写使能信号        
-    assign data_sram_addr = ex_result;  //内存的地址
-    assign data_sram_wdata = data_sram_wen==4'b1111 ? rf_rdata2 
-                            :data_sram_wen==4'b0001 ? {24'b0,rf_rdata2[7:0]}
-                            :data_sram_wen==4'b0010 ? {16'b0,rf_rdata2[7:0],8'b0}
-                            :data_sram_wen==4'b0100 ? {8'b0,rf_rdata2[7:0],16'b0}
-                            :data_sram_wen==4'b1000 ? {rf_rdata2[7:0],24'b0}
-                            :data_sram_wen==4'b0011 ? {16'b0,rf_rdata2[15:0]}
-                            :data_sram_wen==4'b1100 ? {rf_rdata2[15:0],16'b0}
-                            :32'b0;
-    
 
     // MUL part
     wire [63:0] mul_result;

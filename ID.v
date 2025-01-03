@@ -15,19 +15,7 @@ module ID(
 
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
-    output wire [`BR_WD-1:0] br_bus,
-
-    //来自执行阶段的信息，指示当前是否有 load 指令
-    input wire ex_is_load,
-    //从执行、存储器、写回阶段传来的转发数据
-    input wire [37:0] ex_to_id,
-    input wire [37:0] mem_to_id,
-    input wire [37:0] wb_to_id,
-    //特定于 HI/LO 寄存器的转发数据，宽度为 66 位，可能是双寄存器的值和状态。
-    input wire [65:0] hilo_ex_to_id,
-    //译码阶段的停止请求信号
-    output wire stallreq_from_id
-
+    output wire [`BR_WD-1:0] br_bus 
 );
 
     reg [`IF_TO_ID_WD-1:0] if_to_id_bus_r;
@@ -35,26 +23,9 @@ module ID(
     wire [31:0] id_pc;
     wire ce;
 
-    //写回阶段写寄存器使能信号,指示是否向寄存器文件写数据
     wire wb_rf_we;
     wire [4:0] wb_rf_waddr;
     wire [31:0] wb_rf_wdata;
-
-
-    //写回阶段传递到译码阶段的写使能信号，指示写回阶段是否有数据需要写入寄存器文件。
-    wire wb_id_we;
-    wire [4:0] wb_id_waddr;
-    wire [31:0] wb_id_wdata;
-
-    //存储阶段到译码阶段的写使能信号，指示存储阶段是否有数据需要写入寄存器文件。
-    wire mem_id_we;
-    wire [4:0] mem_id_waddr;
-    wire [31:0] mem_id_wdata;
-
-    //执行阶段到译码阶段的写使能信号，指示执行阶段是否有数据需要写入寄存器文件。
-    wire ex_id_we;
-    wire [4:0] ex_id_waddr;
-    wire [31:0] ex_id_wdata;
 
     always @ (posedge clk) begin
         if (rst) begin
@@ -71,21 +42,7 @@ module ID(
         end
     end
     
-    reg q;
-    //控制 q 寄存器的值，1暂停 0恢复正常
-    always @(posedge clk) begin
-        if (stall[1]==`Stop) begin
-            q <= 1'b1;
-        end
-        else begin
-            q <= 1'b0;
-        end
-    end
-    //如果q=1，inst不变，否则更新inst
-    assign inst = (q) ?inst: inst_sram_rdata;
-
-    //原 assign inst = inst_sram_rdata;
-
+    assign inst = inst_sram_rdata;
     assign {
         ce,
         id_pc
@@ -95,25 +52,6 @@ module ID(
         wb_rf_waddr,
         wb_rf_wdata
     } = wb_to_rf_bus;
-
-
-    assign {
-        wb_id_we,
-        wb_id_waddr,
-        wb_id_wdata
-    } = wb_to_id;
-
-    assign {
-        mem_id_we,
-        mem_id_waddr,
-        mem_id_wdata
-    } = mem_to_id;
-
-    assign {
-        ex_id_we,
-        ex_id_waddr,
-        ex_id_wdata
-    } = ex_to_id;
 
     wire [5:0] opcode;
     wire [4:0] rs,rt,rd,sa;
@@ -134,15 +72,13 @@ module ID(
 
     wire data_ram_en;
     wire [3:0] data_ram_wen;
-    wire [3:0] data_ram_readen;//可读？？？
-
+    
     wire rf_we;
     wire [4:0] rf_waddr;
     wire sel_rf_res;
     wire [2:0] sel_rf_dst;
 
     wire [31:0] rdata1, rdata2;
-    
 
     regfile u_regfile(
     	.clk    (clk    ),
@@ -250,6 +186,8 @@ module ID(
 
     // write enable
     assign data_ram_wen = 1'b0;
+
+
 
     // regfile store enable
     assign rf_we = inst_ori | inst_lui | inst_addiu;
