@@ -8,13 +8,12 @@ module WB(
     input wire [`MEM_TO_WB_WD-1:0] mem_to_wb_bus,
 
     output wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus,
-    
-    output  wire [37:0] wb_to_id_bus,//2
 
     output wire [31:0] debug_wb_pc,
     output wire [3:0] debug_wb_rf_wen,
     output wire [4:0] debug_wb_rf_wnum,
-    output wire [31:0] debug_wb_rf_wdata 
+    output wire [31:0] debug_wb_rf_wdata,
+    output wire [37:0] wb_to_id_bus
 );
 
     reg [`MEM_TO_WB_WD-1:0] mem_to_wb_bus_r;
@@ -46,20 +45,13 @@ module WB(
         rf_wdata
     } = mem_to_wb_bus_r;
 
-    // assign wb_to_rf_bus = mem_to_wb_bus_r[`WB_TO_RF_WD-1:0];
     assign wb_to_rf_bus = {
         rf_we,
         rf_waddr,
         rf_wdata
     };
-    
-     assign wb_to_id_bus = {//2
-        rf_we,
-        rf_waddr,
-        rf_wdata
-    };
 
-    assign wb_to_id = {
+    assign wb_to_id_bus = {
         rf_we,
         rf_waddr,
         rf_wdata
