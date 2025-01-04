@@ -118,15 +118,21 @@ module EX(
 
     // MUL part
     wire [63:0] mul_result;
-    wire mul_signed; // 有符号乘法标记
-
-    mul u_mul(
-    	.clk        (clk            ),
-        .resetn     (~rst           ),
-        .mul_signed (mul_signed     ),
-        .ina        (      ), // 乘法源操作数1
-        .inb        (      ), // 乘法源操作数2
-        .result     (mul_result     ) // 乘法结果 64bit
+    reg stallreq_for_mul;
+    wire mul_ready_i;
+    reg signed_mul_o; //是否是有符号乘法
+    reg [31:0] mul_opdata1_o;
+    reg [31:0] mul_opdata2_o;
+    reg mul_start_o;
+    mymul my_mul(
+        .rst            (rst           ),
+	    .clk            (clk            ),
+	    .signed_mul_i   (signed_mul_o     ),
+	    .a_o            (mul_opdata1_o      ),
+	    .b_o            (mul_opdata2_o      ),
+	    .start_i        (mul_start_o      ),
+	    .result_o       (mul_result     ),
+	    .ready_o        (mul_ready_i     )
     );
 
     // DIV part
@@ -143,15 +149,15 @@ module EX(
     reg signed_div_o;
 
     div u_div(
-    	.rst          (rst          ),
-        .clk          (clk          ),
-        .signed_div_i (signed_div_o ),
-        .opdata1_i    (div_opdata1_o    ),
-        .opdata2_i    (div_opdata2_o    ),
-        .start_i      (div_start_o      ),
-        .annul_i      (1'b0      ),
-        .result_o     (div_result     ), // 除法结果 64bit
-        .ready_o      (div_ready_i      )
+    	.rst          (rst              ),  //复位
+        .clk          (clk              ),  //时钟
+        .signed_div_i (signed_div_o     ),  //是否为有符号除法运算，1位有符号
+        .opdata1_i    (div_opdata1_o    ),  //被除数
+        .opdata2_i    (div_opdata2_o    ),  //除数
+        .start_i      (div_start_o      ),  //是否开始除法运算
+        .annul_i      (1'b0             ),  //是否取消除法运算，1位取消
+        .result_o     (div_result       ),  // 除法结果 64bit
+        .ready_o      (div_ready_i      )   // 除法是否结束
     );
 
     always @ (*) begin
@@ -220,6 +226,29 @@ module EX(
             endcase
         end
     end
+    wire hi_wen,lo_wen;
+    wire [31:0] hi_data,lo_data;
+    assign hi_wen = inst_divu | inst_div | inst_mult | inst_multu | inst_mthi;//hi寄存器 写
+    assign lo_wen = inst_divu | inst_div | inst_mult | inst_multu | inst_mtlo;//lo寄存器 写
+
+    assign hi_data =  (inst_div|inst_divu)   ? div_result[63:32] //高32位为余数
+                    : (inst_mult|inst_multu) ? mul_result[63:32] 
+                    : (inst_mthi)            ? rf_rdata1
+                    : (32'b0);
+
+    assign lo_data =  (inst_div|inst_divu)   ? div_result[31:0] //低32位为商
+                    : (inst_mult|inst_multu) ? mul_result[31:0] 
+                    : (inst_mtlo)            ? rf_rdata1
+                    : (32'b0);  
+
+
+
+    assign hilo_ex_to_id = {
+        hi_wen,         // 65
+        lo_wen,         // 64
+        hi_data,        // 63:32
+        lo_data         // 31:0
+    };
 
     // mul_result 和 div_result 可以直接使用
     
